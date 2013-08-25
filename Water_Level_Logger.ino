@@ -178,7 +178,7 @@ void Repeats(){
       
         mySerial.print("AT+CMGF=1\r");                     //line for sms mode
         delay(100);
-        mySerial.println("AT + CMGS = \"8988\"");          //number to send the text to with country code
+        mySerial.println("AT + CMGS = \"8988\"");          //number to send the text to with country code, 8988 is the Twitter short code for Kenya
         delay(100);
         mySerial.print(depthvalue);                        //the content of the message, only the depth
         mySerial.print(" #thingspeak #nmbriverdepth");     //followed by the thingspeak hashtags
