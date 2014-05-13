@@ -5,7 +5,7 @@
   Seeeduino Mega, Seeeduino GPRS Shield V2, Adafruit WIFI Shield
   GPRS Shield V2 - set jumpers from 7,8 to Serial1Rx,Serial1Tx
   
-  Following code adapted from the great folks at Adafruit, Seeedstudio, Sparkfun and Open Electronics
+  Following code adapted from the great folks at Adafruit, Seeedstudio, Sparkfun, Thingspeak and Open Electronics
  */
 
 #include <sms.h>
@@ -29,13 +29,13 @@ Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ
 SMSGSM sms;
  
  // WLAN parameters
-#define WLAN_SSID       "IWASHWRBWO"
-#define WLAN_PASS       "1122334455"
+#define WLAN_SSID       "xxxx"
+#define WLAN_PASS       "xxxx"
 // Security can be WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA or WLAN_SEC_WPA2
 #define WLAN_SECURITY   WLAN_SEC_WPA2
 
 #define WEBSITE  "api.thingspeak.com"
-#define API_key  "JA2WGBF8FE08JWQS"
+#define API_key  "xxxx"
 
 String writeAPIKey = "JA2WGBF8FE08JWQS";
 char thingSpeakAddress[] = "api.thingspeak.com";
@@ -150,12 +150,12 @@ void loop()
      
          tsData = message;
          
-         if (String(number) == "+255767122026") writeAPIKey = "2CSUN04EMBIYQO9M"; //My number, for testing, goes to the purungat bridge logger
-         if (String(number) == "+255785870236") writeAPIKey = "ANFB02EJ0X4OVY3Q"; //Ruvu1, Water level logger, field1 data, field2 sdate, field3 stime (Mindu Dam - large logger)
-         if (String(number) == "+255787622342") writeAPIKey = "BH8VRIG6CNVIIYMV"; //Ruvu2, Conductivity, field1 data, field2 sdate, field3 stime
-         if (String(number) == "+255999999999") writeAPIKey = ""; // small water level logger
-         if (String(number) == "+255688308484") writeAPIKey = "JA2WGBF8FE08JWQS"; //Ruvu3, Weather Station
-         if (String(number) == "+255657738284") writeAPIKey = "ARO9XCZVC44JASLA"; //Roses Test
+         if (String(number) == "+255xx") writeAPIKey = "xxxx"; //My number, for testing, goes to the purungat bridge logger
+         if (String(number) == "+255xx") writeAPIKey = "xxxx"; //Ruvu1, Water level logger, field1 data, field2 sdate, field3 stime (Mindu Dam - large logger)
+         if (String(number) == "+255xx") writeAPIKey = "xxxx"; //Ruvu2, Conductivity, field1 data, field2 sdate, field3 stime
+         if (String(number) == "+255xx") writeAPIKey = ""; // small water level logger
+         if (String(number) == "+255xx") writeAPIKey = "xxxx"; //Ruvu3, Weather Station
+         if (String(number) == "+255xx") writeAPIKey = "xxxx"; //Roses Test
 
          
          Serial.println(writeAPIKey);
