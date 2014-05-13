@@ -1,0 +1,459 @@
+/*
+  Code for the weather station at Mindu Dam
+  
+  Portions of the code taken from the great folks at Many Labs.org
+*/
+
+// working weather station
+#define USE_WIND_DEVICES
+#define WIND_DIRECTION_PIN A3   //make sure it is on a3
+#define WIND_SPEED_PIN 3
+#define RAIN_PIN D2
+#define BMP085_ADDRESS 0x77  // I2C address of BMP085
+#define USE_DHT_DEVICE
+
+#include <DHT.h>
+#include <Wire.h>
+#include <WireGarden.h>
+#include "RTClib.h"
+#include <Time.h>
+#include <TimeAlarms.h>
+#include <String.h>                //library to help deal with strings
+#include <SD.h>
+#include <Adafruit_Sensor.h>
+#include <RTC_DS1307.h>
+#include <SPI.h>
+#include <SoftwareSerial.h>
+#include <sms.h>
+
+
+#define error(s) error_P(PSTR(s))
+
+const unsigned char OSS = 2;  // Oversampling Setting
+
+RTC_DS1307 RTC;                              //define the Real Time Clock object
+
+#define LIGHT_PIN 2
+#define DHT22_SENSOR_PIN 6
+// Devices
+WindSpeedDevice windSpeed( DEVICE_TYPE_WIND_SPEED, WIND_SPEED_PIN );
+WindDirectionDevice windDirection( DEVICE_TYPE_WIND_DIRECTION, WIND_DIRECTION_PIN );
+DHTDevice dht( DEVICE_TYPE_DHT22, DHT22_SENSOR_PIN );
+
+//float windSpeedValue = 0; // mph
+//float windDirectionValue = 0; // degrees
+
+volatile float rainValue = 0; // inches
+
+File datafile;
+
+const int chipSelect = 10;    
+
+
+// Calibration values for bmp
+int ac1;
+int ac2;
+int ac3;
+unsigned int ac4;
+unsigned int ac5;
+unsigned int ac6;
+int b1;
+int b2;
+int mb;
+int mc;
+int md;
+
+// b5 is calculated in bmp085GetTemperature(...), this variable is also used in bmp085GetPressure(...)
+// so ...Temperature(...) must be called before ...Pressure(...).
+long b5; 
+
+//float temperature; //MUST be called first
+//float pressure;
+//float sensorvalue;
+
+// We'll use these to make sure the rain interrupt doesn't run too quickly
+volatile unsigned long lastRainInterrupt = 0;
+volatile unsigned long thisRainInterrupt = 0;
+
+void setup() {
+
+  Serial.begin(19200);
+
+  Wire.begin();
+    
+  bmp085Calibration();
+  
+  pinMode(2, INPUT);        // switchPin is an input
+  digitalWrite(2, HIGH);    // Activate internal pullup resistor
+  
+   pinMode(3, INPUT);        // switchPin is an input
+  digitalWrite(3, HIGH);    // Activate internal pullup resistor
+  
+    pinMode(9, OUTPUT);
+
+  // initialize WireGarden command processing
+  initCommands( executeCommand );
+    
+  RTC.begin();                                //start the real time clock
+
+  // The rain gauge transitions from LOW to HIGH when it empties
+  // (Every 0.011 inches of rain), so we'll interrupt on RISING.
+  attachInterrupt(0, rainInterrupt, RISING);
+  
+  
+  Alarm.timerRepeat(3600, Repeats);            // timer for every 30 minutes (1800), 60 minutes (3600), 900 seconds for 15 minutes, 60 for one minute
+
+  Serial.print("Initializing SD card...");
+  // make sure that the default chip select pin is set to
+  // output, even if you don't use it:
+  pinMode(SS, OUTPUT);
+  
+  // see if the card is present and can be initialized:
+  if (!SD.begin(10,11,12,13)) {
+    Serial.println("Card failed, or not present");
+    // don't do anything more:
+    while (1) ;
+  }
+  Serial.println("card initialized.");
+  
+  // Open up the file we're going to log to!
+  datafile = SD.open("datalog.txt", FILE_WRITE);
+  if (! datafile) {
+    Serial.println("error opening datalog.txt");
+    // Wait forever since we cant write data
+    while (1) ;
+  }
+
+  Serial.print("all loaded!");
+}
+  
+// Run forever
+void loop() {
+
+  Alarm.delay(1000);                  // need this here for the alarms and timers to be called
+
+}
+
+void Repeats(){
+ 
+  sensors_event_t event;
+  delay(500);
+  
+  DateTime now = RTC.now();
+  
+  delay(500);
+
+  float windSpeedValue = windSpeed.value(); // mph
+  
+  delay(100);
+  
+  float windDirectionValue = windDirection.value(); // degrees
+  
+  delay(100);
+  
+  float temperature = bmp085GetTemperature(bmp085ReadUT()); //MUST be called first
+  
+  delay(100);
+  
+  float pressure = bmp085GetPressure(bmp085ReadUP());
+  
+  delay(100);
+  
+    // The DHT Device returns its values in an array of floats
+  float *values = dht.values();
+  float dhtHumidityValue = values[1]; // percent
+  
+  delay(100);
+  
+  int lightValue = analogRead(LIGHT_PIN);
+  
+  delay(100);
+  
+  SIM900poweron();
+  
+  delay(15000);
+ 
+     if (gsm.begin(19200)) 
+       Serial.println(F("Cell Phone Status = READY"));
+       else Serial.println(F("Cell Phone Status = IDLE"));
+      
+      Serial1.print("AT+CMGF=1\r");    //line for sms mode
+      delay(100);
+     // Serial1.println("AT + CMGS = \"+255767122026\"");// number to send the text to with country code, my number as a test
+      Serial1.println("AT + CMGS = \"+255787620322\"");
+      delay(100);
+      Serial1.print("field1=");
+      Serial1.print(temperature);
+      Serial1.print("&field2=");
+      Serial1.print(dhtHumidityValue);
+      Serial1.print("&field3=");
+      Serial1.print(windSpeedValue);
+      Serial1.print("&field4=");
+      Serial1.print(windDirectionValue);
+      Serial1.print("&field5=");
+      Serial1.print(lightValue);
+      Serial1.print("&field6=");
+      Serial1.print(pressure);
+      Serial1.print("&field7=");
+      Serial1.print(rainValue);
+      Serial1.print("&field8=");
+      Serial1.print(now.year(), DEC);
+      Serial1.print('/');
+      Serial1.print(now.month(), DEC);
+      Serial1.print('/');
+      Serial1.print(now.day(), DEC);
+      Serial1.print(',');
+      Serial1.print(now.hour(), DEC);
+      Serial1.print(':');
+      Serial1.print(now.minute(), DEC);
+      Serial1.print(':');
+      Serial1.print(now.second(), DEC);
+      Serial1.println((char)26);//the ASCII code of the ctrl+z is 26
+      
+      delay(10000);
+      
+          // turn modem off
+ SIM900poweroff();
+            
+      delay(1000);
+
+    datafile.print(now.year(), DEC);
+    datafile.print('/');
+    datafile.print(now.month(), DEC);
+    datafile.print('/');
+    datafile.print(now.day(), DEC);
+    datafile.print(',');
+    datafile.print(now.hour(), DEC);
+    datafile.print(':');
+    datafile.print(now.minute(), DEC);
+    datafile.print(':');
+    datafile.print(now.second(), DEC);
+    datafile.print(',');
+   datafile.print(temperature);
+    datafile.print(",");
+    datafile.print(pressure);
+    datafile.print(",");
+   datafile.print(windSpeedValue);
+    datafile.print(",");
+    datafile.print(windDirectionValue);
+    datafile.print(",");
+    datafile.print(dhtHumidityValue);
+    datafile.print(",");
+    datafile.print(lightValue);
+    datafile.print(",");
+    datafile.println(rainValue);
+ 
+    datafile.flush();
+
+        //|||||||||||||||||||Write to Disk|||||||||||||||||||||||||
+        
+       delay(1000); 
+            
+      rainValue = 0;
+}   
+void rainInterrupt(){
+  // Make sure that we haven't updated the rain value in the last 100 milliseconds
+  thisRainInterrupt = millis();
+  if(thisRainInterrupt - lastRainInterrupt > 100){
+    // Each time the rain gauge tips it's an additional 0.011 inches of rain.
+    rainValue += 0.011;
+    lastRainInterrupt = thisRainInterrupt;
+  }
+}
+
+// This will allow us to respond to commands in the WireGarden protocol.
+boolean executeCommand( const char *command, byte argCount, char *args[] ) {
+  if (strEq( command, "ck" )) {
+    sendString( "ok\n" );
+  }
+
+  // handle all commands other than ck
+  return true;
+}
+
+// Stores all of the bmp085's calibration values into global variables
+// Calibration values are required to calculate temp and pressure
+// This function should be called at the beginning of the program
+void bmp085Calibration()
+{
+  ac1 = bmp085ReadInt(0xAA);
+  ac2 = bmp085ReadInt(0xAC);
+  ac3 = bmp085ReadInt(0xAE);
+  ac4 = bmp085ReadInt(0xB0);
+  ac5 = bmp085ReadInt(0xB2);
+  ac6 = bmp085ReadInt(0xB4);
+  b1 = bmp085ReadInt(0xB6);
+  b2 = bmp085ReadInt(0xB8);
+  mb = bmp085ReadInt(0xBA);
+  mc = bmp085ReadInt(0xBC);
+  md = bmp085ReadInt(0xBE);
+}
+// Calculate temperature in deg C
+float bmp085GetTemperature(unsigned int ut){
+  long x1, x2;
+
+  x1 = (((long)ut - (long)ac6)*(long)ac5) >> 15;
+  x2 = ((long)mc << 11)/(x1 + md);
+  b5 = x1 + x2;
+
+  float temp = ((b5 + 8)>>4);
+  temp = temp /10;
+
+  return temp;
+}
+// Calculate pressure given up
+// calibration values must be known
+// b5 is also required so bmp085GetTemperature(...) must be called first.
+// Value returned will be pressure in units of Pa.
+long bmp085GetPressure(unsigned long up){
+  long x1, x2, x3, b3, b6, p;
+  unsigned long b4, b7;
+
+  b6 = b5 - 4000;
+  // Calculate B3
+  x1 = (b2 * (b6 * b6)>>12)>>11;
+  x2 = (ac2 * b6)>>11;
+  x3 = x1 + x2;
+  b3 = (((((long)ac1)*4 + x3)<<OSS) + 2)>>2;
+
+  // Calculate B4
+  x1 = (ac3 * b6)>>13;
+  x2 = (b1 * ((b6 * b6)>>12))>>16;
+  x3 = ((x1 + x2) + 2)>>2;
+  b4 = (ac4 * (unsigned long)(x3 + 32768))>>15;
+
+  b7 = ((unsigned long)(up - b3) * (50000>>OSS));
+  if (b7 < 0x80000000)
+    p = (b7<<1)/b4;
+  else
+    p = (b7/b4)<<1;
+
+  x1 = (p>>8) * (p>>8);
+  x1 = (x1 * 3038)>>16;
+  x2 = (-7357 * p)>>16;
+  p += (x1 + x2 + 3791)>>4;
+
+  long temp = p;
+  return temp;
+}
+
+// Read 1 byte from the BMP085 at 'address'
+char bmp085Read(byte address)
+{
+  Wire.beginTransmission(BMP085_ADDRESS);
+  Wire.write(address);
+  Wire.endTransmission();
+  Wire.requestFrom(BMP085_ADDRESS, 1);
+  while(!Wire.available()) {};
+  return Wire.read();
+}
+
+// Read 2 bytes from the BMP085
+// First byte will be from 'address'
+// Second byte will be from 'address'+1
+int bmp085ReadInt(byte address)
+{
+  unsigned char msb, lsb;
+
+  Wire.beginTransmission(BMP085_ADDRESS);
+  Wire.write(address);
+  Wire.endTransmission();
+
+  Wire.requestFrom(BMP085_ADDRESS, 2);
+  while(Wire.available()<2)
+    ;
+  msb = Wire.read();
+  lsb = Wire.read();
+
+  return (int) msb<<8 | lsb;
+}
+
+// Read the uncompensated temperature value
+unsigned int bmp085ReadUT(){
+  unsigned int ut;
+
+  // Write 0x2E into Register 0xF4
+  // This requests a temperature reading
+  Wire.beginTransmission(BMP085_ADDRESS);
+  Wire.write((byte)0xF4);
+  Wire.write((byte)0x2E);
+  Wire.endTransmission();
+
+  // Wait at least 4.5ms
+  delay(5);
+
+  // Read two bytes from registers 0xF6 and 0xF7
+  ut = bmp085ReadInt(0xF6);
+  return ut;
+}
+
+// Read the uncompensated pressure value
+unsigned long bmp085ReadUP(){
+
+  unsigned char msb, lsb, xlsb;
+  unsigned long up = 0;
+
+  // Write 0x34+(OSS<<6) into register 0xF4
+  // Request a pressure reading w/ oversampling setting
+  Wire.beginTransmission(BMP085_ADDRESS);
+  Wire.write(0xF4);
+  Wire.write(0x34 + (OSS<<6));
+  Wire.endTransmission();
+
+  // Wait for conversion, delay time dependent on OSS
+  delay(2 + (3<<OSS));
+
+  // Read register 0xF6 (MSB), 0xF7 (LSB), and 0xF8 (XLSB)
+  msb = bmp085Read(0xF6);
+  lsb = bmp085Read(0xF7);
+  xlsb = bmp085Read(0xF8);
+
+  up = (((unsigned long) msb << 16) | ((unsigned long) lsb << 8) | (unsigned long) xlsb) >> (8-OSS);
+
+  return up;
+}
+
+void writeRegister(int deviceAddress, byte address, byte val) {
+  Wire.beginTransmission(deviceAddress); // start transmission to device 
+  Wire.write(address);       // send register address
+  Wire.write(val);         // send value to write
+  Wire.endTransmission();     // end transmission
+}
+
+int readRegister(int deviceAddress, byte address){
+
+  int v;
+  Wire.beginTransmission(deviceAddress);
+  Wire.write(address); // register to read
+  Wire.endTransmission();
+
+  Wire.requestFrom(deviceAddress, 1); // read a byte
+
+  while(!Wire.available()) {
+    // waiting
+  }
+
+  v = Wire.read();
+  return v;
+}
+
+void SIM900poweron()
+// software equivalent of pressing the GSM shield "power" button
+{
+  digitalWrite(9,LOW);
+  delay(100);
+  digitalWrite(9,HIGH);
+  delay(500);
+  digitalWrite(9,LOW);
+  delay(100);
+}
+void SIM900poweroff()
+// software equivalent of pressing the GSM shield "power" button
+{
+      digitalWrite(9,LOW);
+      delay(1000);
+      digitalWrite(9,HIGH);
+      delay(2000);
+      digitalWrite(9,LOW);
+      delay(3000);
+}
