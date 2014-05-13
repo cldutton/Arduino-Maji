@@ -1,0 +1,66 @@
+/*
+This code is for calibrating the specific probes
+"comment" or "uncomment" out the lines for the appropriate probe you want to use.
+
+Code taken from the great folks at Atlas Scientific (basically their EZ_COM code)
+*/
+
+String inputstring = "";                                                       //a string to hold incoming data from the PC
+String sensorstring = "";                                                      //a string to hold the data from the Atlas Scientific product
+boolean input_stringcomplete = false;                                          //have we received all the data from the PC
+boolean sensor_stringcomplete = false;                                         //have we received all the data from the Atlas Scientific product
+
+void setup(){                                                                //set up the hardware
+    
+    pinMode(4, OUTPUT);                      //used to control the S0 pin
+    pinMode(5, OUTPUT);                      //used to control the S1 pin
+     
+    Serial.begin(38400);                                                      //set baud rate for the hardware serial port to 38400
+    Serial1.begin(38400);                                                    //set baud rate for software serial port to 38400
+    inputstring.reserve(5);                                                   //set aside some bytes for receiving data from the PC
+    sensorstring.reserve(30);                                                 //set aside some bytes for receiving data from Atlas Scientific product
+     
+//      //dissolved oxygen                                  
+//       digitalWrite(4, LOW);                  //S0=0    
+//       digitalWrite(5, LOW);                  //S1=0
+//      
+//      //Electrical Conductivity                                 
+//       digitalWrite(4, HIGH);                  //S0=1    
+//       digitalWrite(5, LOW);                   //S1=0
+//      
+      //ORP                                   
+       digitalWrite(4, LOW);                   //S0=0    
+       digitalWrite(5, HIGH);                  //S1=1
+//      
+//      //pH                               
+//       digitalWrite(4, HIGH);                  //S0=1    
+//       digitalWrite(5, HIGH);                  //S1=1
+
+     }
+ 
+void serialEvent() {                                                         //if the hardware serial port receives a char
+               char inchar = (char)Serial.read();                               //get the char we just received
+               inputstring += inchar;                                           //add it to the inputString
+               if(inchar == '\r') {input_stringcomplete = true;}                //if the incoming character is a <CR>, set the flag
+              }  
+ 
+void loop(){                                                                   //here we go....
+
+  if (input_stringcomplete){                                                   //if a string from the PC has been recived in its entierty 
+      Serial1.print(inputstring);                                             //send that string to the Atlas Scientific product
+      inputstring = "";                                                        //clear the string:
+      input_stringcomplete = false;                                            //reset the flage used to tell if we have recived a completed string from the PC
+      }
+
+  while (Serial1.available()) {                                               //while a char is holding in the serial buffer
+         char inchar = (char)Serial1.read();                                  //get the new char
+         sensorstring += inchar;                                               //add it to the sensorString
+         if (inchar == '\r') {sensor_stringcomplete = true;}                   //if the incoming character is a <CR>, set the flag
+         }
+
+   if (sensor_stringcomplete){                                                 //if a string from the Atlas Scientific product has been received in its entirety
+       Serial.println(sensorstring);                                             //use the hardware serial port to send that data to the PC
+       sensorstring = "";                                                      //clear the string:
+       sensor_stringcomplete = false;                                          //reset the flag used to tell if we have received a completed string from the Atlas Scientific product
+      }
+}
