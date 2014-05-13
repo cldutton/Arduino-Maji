@@ -1,0 +1,223 @@
+/*
+  Ruvu Base Station V0_5
+  09May2014
+ 
+  Seeeduino Mega, Seeeduino GPRS Shield V2, Adafruit WIFI Shield
+  GPRS Shield V2 - set jumpers from 7,8 to Serial1Rx,Serial1Tx
+  
+  Following code adapted from the great folks at Adafruit, Seeedstudio, Sparkfun and Open Electronics
+ */
+
+#include <sms.h>
+#include <Adafruit_CC3000.h>
+#include <ccspi.h>
+#include <SPI.h>
+#include <String.h>
+#include "utility/debug.h"
+#include <stdlib.h>
+#include <SoftwareSerial.h>
+#include <SD.h>
+
+// Define CC3000 chip pins
+#define ADAFRUIT_CC3000_IRQ   3
+#define ADAFRUIT_CC3000_VBAT  5
+#define ADAFRUIT_CC3000_CS    10
+
+// Create CC3000 instances
+Adafruit_CC3000 cc3000 = Adafruit_CC3000(ADAFRUIT_CC3000_CS, ADAFRUIT_CC3000_IRQ, ADAFRUIT_CC3000_VBAT,
+                                         SPI_CLOCK_DIV2); // you can change this clock speed
+SMSGSM sms;
+ 
+ // WLAN parameters
+#define WLAN_SSID       "IWASHWRBWO"
+#define WLAN_PASS       "1122334455"
+// Security can be WLAN_SEC_UNSEC, WLAN_SEC_WEP, WLAN_SEC_WPA or WLAN_SEC_WPA2
+#define WLAN_SECURITY   WLAN_SEC_WPA2
+
+#define WEBSITE  "api.thingspeak.com"
+#define API_key  "JA2WGBF8FE08JWQS"
+
+String writeAPIKey = "JA2WGBF8FE08JWQS";
+char thingSpeakAddress[] = "api.thingspeak.com";
+
+String tsData = "";
+
+uint32_t ip;
+
+char number[]="3921234567";
+char message[180];  //character array
+char pos;
+byte stat;
+
+int resetcounter = 0;
+
+const int chipSelect = 4;
+
+File dataFile;
+
+void setup()
+{
+  Serial.begin(19200); // for serial monitor
+  
+  pinMode(SS, OUTPUT);
+  
+  // see if the card is present and can be initialized:
+  if (!SD.begin(4)) {
+    Serial.println("Card failed, or not present");
+    // don't do anything more:
+    while (1) ;
+  }
+  Serial.println("SD card initialized.");
+  
+  // Open up the file we're going to log to!
+  dataFile = SD.open("datalog.txt", FILE_WRITE);
+  if (! dataFile) {
+    Serial.println("error opening datalog.txt");
+    // Wait forever since we cant write data
+    while (1) ;
+  }
+
+  SIM900poweron();
+ 
+ if (gsm.begin(19200)) 
+   Serial.println(F("Cell Phone Status = READY"));
+ else Serial.println(F("Cell Phone Status = IDLE"));
+ 
+ Serial.println(F("Initializing WIFI"));
+  
+  if (!cc3000.begin())
+  {
+    Serial.println(F("Couldn't begin()! Check your wiring?"));
+    while(1);
+  }
+   // Connect to WiFi network
+  cc3000.connectToAP(WLAN_SSID, WLAN_PASS, WLAN_SECURITY);
+  Serial.println(F("WIFI Connected!"));
+  
+  /* Wait for DHCP to complete */
+  Serial.println(F("Request DHCP"));
+  while (!cc3000.checkDHCP())
+  {
+    delay(100);
+  }  
+
+  // Get the website IP & print it
+  ip = 0;
+  Serial.print(WEBSITE); Serial.print(F(" -> "));
+  while (ip == 0) {
+    if (! cc3000.getHostByName(WEBSITE, &ip)) {
+      Serial.println(F("Couldn't resolve!"));
+    }
+    delay(500);
+  }
+  cc3000.printIPdotsRev(ip);
+}
+
+void loop()
+ {
+   char pos=sms.IsSMSPresent(SMS_ALL);
+   
+   Serial.println((int)pos);
+   
+   if((int)pos>0&&(int)pos<=100){
+     Serial.print(F("New Message, POS="));
+     Serial.println((int)pos);
+     message[0]='\0';
+     sms.GetSMS((int)pos,number,message,180);
+     
+     //SD CARD CODE
+     
+     dataFile.print(number);
+     dataFile.print(",");
+     dataFile.println(message);
+     
+     dataFile.flush();
+     
+     //END SD CARD CODE
+    
+     delay(100);
+     
+     stat=sms.GetAuthorizedSMS((int)pos,number,message,180,1,100);
+     
+       if(stat==GETSMS_AUTH_SMS){
+
+         //enter stuff to do if password ok here
+         
+         Serial.print(F("Message is..."));
+         Serial.println(message);
+         Serial.print(F("number is from...."));
+         Serial.println(number);
+     
+         tsData = message;
+         
+         if (String(number) == "+255767122026") writeAPIKey = "2CSUN04EMBIYQO9M"; //My number, for testing, goes to the purungat bridge logger
+         if (String(number) == "+255785870236") writeAPIKey = "ANFB02EJ0X4OVY3Q"; //Ruvu1, Water level logger, field1 data, field2 sdate, field3 stime (Mindu Dam - large logger)
+         if (String(number) == "+255787622342") writeAPIKey = "BH8VRIG6CNVIIYMV"; //Ruvu2, Conductivity, field1 data, field2 sdate, field3 stime
+         if (String(number) == "+255999999999") writeAPIKey = ""; // small water level logger
+         if (String(number) == "+255688308484") writeAPIKey = "JA2WGBF8FE08JWQS"; //Ruvu3, Weather Station
+         if (String(number) == "+255657738284") writeAPIKey = "ARO9XCZVC44JASLA"; //Roses Test
+
+         
+         Serial.println(writeAPIKey);
+         
+          // Send request
+         Adafruit_CC3000_Client client = cc3000.connectTCP(ip, 80);
+         
+         if (client.connected()) {
+         Serial.println("Connected!");
+         client.print("POST /update HTTP/1.1\n");
+         client.print("Host: api.thingspeak.com\n");
+         client.print("Connection: close\n");
+         client.print("X-THINGSPEAKAPIKEY: "+writeAPIKey+"\n");
+         client.print("Content-Type: application/x-www-form-urlencoded\n");
+         client.print("Content-Length: ");
+         client.print(tsData.length());
+         client.print("\n\n");
+         client.print(tsData);
+         delay(100);
+         
+         } 
+          else {
+              Serial.println(F("Connection failed"));    
+               }
+          Serial.println(F("-------------------------------------"));
+          while (client.connected()) {
+            while (client.available()) {
+             char c = client.read();
+             Serial.print(c);
+            }
+          }
+          client.close();
+          Serial.println(F("-------------------------------------"));
+          
+       } //end of if password is okay
+          
+   }//end of if sms is between 0 and 100
+    sms.DeleteSMS((int)pos); 
+ delay(15000);
+}
+
+
+void SIM900poweron()
+// software equivalent of pressing the GSM shield "power" button
+{
+  pinMode(9, OUTPUT);
+  digitalWrite(9,LOW);
+  delay(100);
+  digitalWrite(9,HIGH);
+  delay(500);
+  digitalWrite(9,LOW);
+  delay(100);
+}
+
+void SIM900poweroff()
+// software equivalent of pressing the GSM shield "power" button
+{
+      pinMode(9,OUTPUT);
+      digitalWrite(9,LOW);
+      delay(1000);
+      digitalWrite(9,HIGH);
+      delay(2000);
+      digitalWrite(9,LOW);
+      delay(3000);
+}
