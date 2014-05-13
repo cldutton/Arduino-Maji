@@ -179,8 +179,8 @@ void Repeats(){
       
       Serial1.print("AT+CMGF=1\r");    //line for sms mode
       delay(100);
-     // Serial1.println("AT + CMGS = \"+255767122026\"");// number to send the text to with country code, my number as a test
-      Serial1.println("AT + CMGS = \"+255787620322\"");
+     // Serial1.println("AT + CMGS = \"+255xxxx\"");// number to send the text to with country code, my number as a test
+      Serial1.println("AT + CMGS = \"+255xxxx\"");
       delay(100);
       Serial1.print("field1=");
       Serial1.print(temperature);
