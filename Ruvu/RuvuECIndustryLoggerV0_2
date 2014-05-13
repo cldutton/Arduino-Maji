@@ -136,7 +136,7 @@ void loop ()
       
         Serial.print("AT+CMGF=1\r");                     //line for sms mode
         delay(100);
-        Serial.println("AT + CMGS = \"+255787620322\"");          //number for the Android phone server
+        Serial.println("AT + CMGS = \"+255xxxx\"");          //number for the Android phone server
         delay(100);
         Serial.print("field1=");
         Serial.print(sensorstring);
